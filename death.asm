@@ -8,6 +8,7 @@ numL	EQU	06H		;second number in LED
 CNTF	EQU	07H		;0 for first bit, 1 for second bit
 
 CHAR_COUNT EQU 69H
+INPUT_ADDR EQU 38h
 
 
 
@@ -51,6 +52,7 @@ spacing: db '000000000000000000000000'
 
 start:
 mov CHAR_COUNT, #00h
+mov INPUT_ADDR, #20h
 println 'Please enter a password: '
 mov R0, #20h
 waiting_for_input:
@@ -65,9 +67,10 @@ key_pressed:
 	cjne A, #0ch, continue
 	jmp check_passwd
 	continue:
+	mov R0, INPUT_ADDR
 	mov @R0, A
 	print '*'
-	inc R0
+	inc INPUT_ADDR
 
 waiting_for_unpress:
 	mov P2, #0F0h
