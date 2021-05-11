@@ -10,6 +10,8 @@ CNTF	EQU	07H		;0 for first bit, 1 for second bit
 CHAR_COUNT EQU 69H
 INPUT_ADDR EQU 38h
 
+precision  equ 4
+
 developer_mode equ 1
 
 ; How to hack this program:
@@ -64,7 +66,16 @@ movr macro reg1, reg2
 	mov A, B
 endm
 
+cje macro arg1, arg2, label
+	LOCAL dont_jump
+	cjne arg1, arg2, dont_jump
+	ljmp label
+	dont_jump:
+endm
+	
+
 passwd: db 11,8,1,5,0
+ascii_values: db 48,49,50,51,52,53,54,55,56,57,69,48
 
 start:
 ifdef developer_mode
@@ -212,18 +223,117 @@ jmp login
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 calculator:
-	println 'Please enter first number to add: '
+	println 'Please enter first number: '
 	mov R2, #00h
 	mov R3, #00h
 next_digit:
 	call get_character
+	mov DPTR, #ascii_values
+	mov 40h, A
+	cje A, #0ch, select_operator
+	call print_character
+	mov R6, #00h
+	mov R7, #0ah
+	movr R4, R2
+	movr R5, R3
+	call MUL16_16
+	mov A, 40h
+	cjne A, #0bh, not_zero_first
+	mov A, #00h
+not_zero_first:
 	mov R6, #00h
 	mov R7, A
 	movr R4, R2
 	movr R5, R3
 	call ADD16_16
 	jmp next_digit
-	
+select_operator:
+	mov 38h, R2
+	mov 39h, R3
+	println '1\x3a +   2\x3a -   3\x3a *   4\x3a /'
+	call get_character
+	mov 3ah, A
+second_number:
+	println 'Please enter second number: '
+	mov R2, #00h
+	mov R3, #00h
+second_number_next_digit:
+	call get_character
+	mov DPTR, #ascii_values
+	mov 40h, A
+	cje A, #0ch, calculate
+	call print_character
+	mov R6, #00h
+	mov R7, #0ah
+	movr R4, R2
+	movr R5, R3
+	call MUL16_16
+	mov A, 40h
+	cjne A, #0bh, not_zero
+	mov A, #00h
+not_zero:
+	mov R6, #00h
+	mov R7, A
+	movr R4, R2
+	movr R5, R3
+	call ADD16_16
+	jmp second_number_next_digit
+calculate:
+	movr R4, R2
+	movr R5, R3
+	mov R6, 38h
+	mov R7, 39h
+	mov A, 3ah
+	cje A, #01h, add
+	cje A, #02h, sub
+	cje A, #03h, mul
+	cje A, #04h, div
+
+add:
+	call ADD16_16
+	jmp print_res
+sub:
+	call SUB16_16
+	jmp print_res
+mul:
+	call MUL16_16
+	jmp print_res
+div:
+	movr R1, R6
+	movr R0, R7
+	movr R3, R4
+	movr R2, R5
+	call DIV16_16
+	movr R3, R4
+	movr R2, R5
+	mov R0, #00h
+	mov R1, #00h
+	jmp print_res
+
+print_res:
+	mov 38h, R3
+	mov 39h, R2
+	mov 3ah, R1
+	mov 3bh, R0
+	println 'Result\x3a '
+	mov DPTR, #ascii_values
+	mov R7, #00h
+bin_to_dec:
+	call adivr10
+	push A
+	inc R7
+	mov A, #00h
+	ORL A, 38h
+	ORL A, 39h
+	ORL A, 3ah
+	ORL A, 3bh
+	cje A, #00h, stop
+	jmp bin_to_dec
+stop:
+	pop A
+	call print_character
+	djnz R7, stop
+	nop
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;      16 Bit Mathamphetamine                                     ;;;;;;;;;;;;;
@@ -294,6 +404,92 @@ MUL16_16:
 
     ;Return - answer now resides in R1, R2, and R3.
     RET
+
+SUB16_16:
+  ;Step 1 of the process
+  MOV A,R7  ;Move the low-byte into the accumulator
+  CLR C     ;Always clear carry before first subtraction
+  SUBB A,R5 ;Subtract the second low-byte from the accumulator
+  MOV R3,A  ;Move the answer to the low-byte of the result
+
+  ;Step 2 of the process
+  MOV A,R6  ;Move the high-byte into the accumulator
+  SUBB A,R4 ;Subtract the second high-byte from the accumulator
+  MOV R2,A  ;Move the answer to the low-byte of the result
+
+  ;Return - answer now resides in R2, and R3.
+  RET
+
+div16_16:
+  CLR C       ;Clear carry initially
+  MOV R4,#00h ;Clear R4 working variable initially
+  MOV R5,#00h ;CLear R5 working variable initially
+  MOV B,#00h  ;Clear B since B will count the number of left-shifted bits
+div1:
+  INC B      ;Increment counter for each left shift
+  MOV A,R2   ;Move the current divisor low byte into the accumulator
+  RLC A      ;Shift low-byte left, rotate through carry to apply highest bit to high-byte
+  MOV R2,A   ;Save the updated divisor low-byte
+  MOV A,R3   ;Move the current divisor high byte into the accumulator
+  RLC A      ;Shift high-byte left high, rotating in carry from low-byte
+  MOV R3,A   ;Save the updated divisor high-byte
+  JNC div1   ;Repeat until carry flag is set from high-byte
+div2:        ;Shift right the divisor
+  MOV A,R3   ;Move high-byte of divisor into accumulator
+  RRC A      ;Rotate high-byte of divisor right and into carry
+  MOV R3,A   ;Save updated value of high-byte of divisor
+  MOV A,R2   ;Move low-byte of divisor into accumulator
+  RRC A      ;Rotate low-byte of divisor right, with carry from high-byte
+  MOV R2,A   ;Save updated value of low-byte of divisor
+  CLR C      ;Clear carry, we don't need it anymore
+  MOV 07h,R1 ;Make a safe copy of the dividend high-byte
+  MOV 06h,R0 ;Make a safe copy of the dividend low-byte
+  MOV A,R0   ;Move low-byte of dividend into accumulator
+  SUBB A,R2  ;Dividend - shifted divisor = result bit (no factor, only 0 or 1)
+  MOV R0,A   ;Save updated dividend 
+  MOV A,R1   ;Move high-byte of dividend into accumulator
+  SUBB A,R3  ;Subtract high-byte of divisor (all together 16-bit substraction)
+  MOV R1,A   ;Save updated high-byte back in high-byte of divisor
+  JNC div3   ;If carry flag is NOT set, result is 1
+  MOV R1,07h ;Otherwise result is 0, save copy of divisor to undo subtraction
+  MOV R0,06h
+div3:
+  CPL C      ;Invert carry, so it can be directly copied into result
+  MOV A,R4 
+  RLC A      ;Shift carry flag into temporary result
+  MOV R4,A   
+  MOV A,R5
+  RLC A
+  MOV R5,A		
+  DJNZ B,div2 ;Now count backwards and repeat until "B" is zero
+  MOV R3,05h  ;Move result to R3/R2
+  MOV R2,04h  ;Move result to R3/R2
+  RET
+
+adivr10:
+  mov  r2, #precision
+  clr  a
+  mov  r0, #3ch
+ad101:  dec  r0
+  xch  a, @r0
+  xchd  a, @r0
+  swap  a
+  mov  b, #10
+  div  ab      ;H-Digit /10
+  swap  a
+  xch  a, @r0
+  swap  a
+  add  a, b
+  swap  a
+  mov  b, #10
+  div  ab      ;L-Digit /10
+  xchd  a, @r0
+  mov  a, @r0
+  jz  ad102
+  clr  f0
+ad102:  mov  a, b
+  djnz  r2, ad101
+  ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;      HELPER / IO FUNCTIONS                          ;;;;;;;;;;;;;
@@ -418,6 +614,24 @@ print_char:
 	cmd	A
 	inc R1
 	jmp print
+
+print_character:
+	mov D, #0
+
+	mov R1, CHAR_COUNT
+	cjne R1, #28h, global_line_limit_not_reached_print_char
+	mov R2, #0
+spacing_loop_print_char:
+	cmd A
+	inc R2
+	cjne R2, #18h, spacing_loop_print_char
+	mov R1, #00h
+global_line_limit_not_reached_print_char:
+	movc	A, @A+DPTR
+	cmd	A
+	inc R1
+	mov CHAR_COUNT, R1
+	ret
 
 eop:
 	nop
