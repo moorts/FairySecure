@@ -1,11 +1,15 @@
-CNTA	EQU	00H		;judge whether 4 cols have shown completely
-CNTB	EQU	01H		;number in second bit
-CNTC	EQU	02H		;number in first bit
-Binit	EQU	03H		;judge whether 4 cols have shown completely
-Cinit	EQU	04H		;judge whether 4 cols have shown completely
-numR	EQU	05H		; first number in LED
-numL	EQU	06H		;second number in LED
-CNTF	EQU	07H		;0 for first bit, 1 for second bit
+; _____           _    
+;|  ___|   _  ___| | __
+;| |_ | | | |/ __| |/ /
+;|  _|| |_| | (__|   < 
+;|_|   \__,_|\___|_|\_\
+;                      
+;     _                                       _        _   _             
+;  __| | ___   ___ _   _ _ __ ___   ___ _ __ | |_ __ _| |_(_) ___  _ __  
+; / _` |/ _ \ / __| | | | '_ ` _ \ / _ \ '_ \| __/ _` | __| |/ _ \| '_ \ 
+;| (_| | (_) | (__| |_| | | | | | |  __/ | | | || (_| | |_| | (_) | | | |
+; \__,_|\___/ \___|\__,_|_| |_| |_|\___|_| |_|\__\__,_|\__|_|\___/|_| |_|
+;
 
 CHAR_COUNT EQU 69H
 INPUT_ADDR EQU 38h
@@ -21,7 +25,6 @@ developer_mode equ 1
 ; Step 3) Profit
 
 	org	0
-	mov	CNTF, #0
 	jmp	start
 
 RS	bit	P3.0
@@ -78,9 +81,6 @@ passwd: db 11,8,1,5,0
 ascii_values: db 48,49,50,51,52,53,54,55,56,57,69,48
 
 start:
-ifdef developer_mode
-	jmp calculator
-endif
 	; Load password to program memory
 	mov R0, #10h
 	mov R1, #00h
@@ -154,7 +154,7 @@ jmp login
 menu:
 call choice_waiting_for_unpress
 first_option:
-	println '1) Do stuff'
+	println '1) Calculator'
 	call get_character
 	cjne A, #02h, first_check_down
 	jmp third_option
@@ -190,7 +190,7 @@ third_check_execute:
 	jmp execute_third
 
 execute_first:
-nop
+	jmp calculator
 execute_second:
 	println 'Enter new password: '
 	mov R0, #10h
@@ -333,7 +333,9 @@ stop:
 	pop A
 	call print_character
 	djnz R7, stop
-	nop
+	print ' ... Press any key to continue'
+	call get_character
+	jmp menu
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;      16 Bit Mathamphetamine                                     ;;;;;;;;;;;;;
